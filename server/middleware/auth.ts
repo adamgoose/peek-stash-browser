@@ -45,6 +45,63 @@ export const verifyToken = (token: string) => {
   };
 };
 
+export const authenticate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const proxyAuthHeader = process.env.PROXY_AUTH_HEADER;
+  if (proxyAuthHeader && !!req.header(proxyAuthHeader)) {
+    return await authenticateHeader(proxyAuthHeader, req, res, next);
+  }
+
+  return await authenticateToken(req, res, next);
+};
+
+export const authenticateHeader = async (
+  proxyAuthHeader: string,
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const username = req.header(proxyAuthHeader);
+
+  if (!username) {
+    return res
+      .status(401)
+      .json({ error: "Access denied. No username provided." });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { username },
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        preferredQuality: true,
+        preferredPlaybackMode: true,
+        preferredPreviewQuality: true,
+        enableCast: true,
+        theme: true,
+        hideConfirmationDisabled: true,
+      },
+    });
+
+    if (!user) {
+      return res
+        .status(401)
+        .json({ error: "Invalid username. User not found." });
+    }
+
+    // Cast to AuthenticatedRequest to set user property
+    (req as AuthenticatedRequest).user = user;
+    next();
+  } catch {
+    res.status(403).json({ error: "Invalid username." });
+  }
+};
+
 export const authenticateToken = async (
   req: Request,
   res: Response,
